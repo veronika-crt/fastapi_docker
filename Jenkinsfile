@@ -23,20 +23,23 @@ pipeline {
 
     stage('Setup Python & Install') {
       steps {
+        // create venv and install runtime + test deps (pytest)
         sh 'python3 -m venv .venv'
-        sh '. .venv/bin/activate && python -m pip install --upgrade pip'
-        sh '. .venv/bin/activate && pip install -r requirements.txt'
+        sh '. .venv/bin/activate && python -m pip install --upgrade pip setuptools wheel'
+        sh '. .venv/bin/activate && pip install -r requirements.txt pytest'
       }
     }
 
     stage('Run Tests') {
       steps {
-        // If you have tests, run them here. Adjust command to your test runner.
-        sh '. .venv/bin/activate || true; pytest -q || true'
+        // Run pytest and produce JUnit XML for Jenkins to consume. Failing tests will fail the build.
+        sh "set -e; . .venv/bin/activate; mkdir -p tests/reports; pytest -q --junitxml=tests/reports/junit.xml"
       }
       post {
         always {
           archiveArtifacts artifacts: 'tests/reports/**', allowEmptyArchive: true
+          // publish test results to the Jenkins test report tab
+          junit allowEmptyResults: true, testResults: 'tests/reports/*.xml'
         }
       }
     }
@@ -57,8 +60,9 @@ pipeline {
       }
       steps {
         withCredentials([usernamePassword(credentialsId: 'docker-registry-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-          sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin ${REGISTRY}'
-          sh 'docker push ${FULL_IMAGE}'
+          // Use double-quoted Groovy strings so ${REGISTRY} and ${FULL_IMAGE} are interpolated before shell runs.
+          sh "echo \"$DOCKER_PASS\" | docker login -u \"$DOCKER_USER\" --password-stdin ${REGISTRY}"
+          sh "docker push ${FULL_IMAGE}"
         }
       }
     }
