@@ -79,14 +79,15 @@ pipeline {
     }
 
     stage('Deploy (optional)') {
-      // run deploy steps on a node with docker/ssh available; you can override label as needed
-      agent { label "${DOCKER_AGENT_LABEL}" }
+      // deploy runs on the same (built-in) node as the pipeline; when DEPLOY_HOST is set this stage executes
       when {
         expression { return env.DEPLOY_HOST != null }
       }
       steps {
         // Example: pull and restart container on remote host via SSH. Requires SSH credentials configured in Jenkins.
         withCredentials([sshUserPrivateKey(credentialsId: 'deploy-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
+          // diagnostic info for debugging
+          sh 'echo "Running on $(hostname); USER=$(whoami); PATH=$PATH"; which ssh || true; ssh -V || true'
           // Use single-quoted groovy string concatenation so shell $ variables are evaluated at runtime inside the shell and FULL_IMAGE is injected from env
           sh 'ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SSH_USER@' + DEPLOY_HOST + ' ' + "'docker pull ${env.FULL_IMAGE} && docker stop fastapi_app || true && docker rm fastapi_app || true && docker run -d --name fastapi_app -p 80:80 ${env.FULL_IMAGE}'"
         }
