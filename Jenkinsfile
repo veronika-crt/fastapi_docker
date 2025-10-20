@@ -47,11 +47,12 @@ pipeline {
     }
 
     stage('Build Docker Image') {
-      // run this stage on a node that has docker available
-      agent { label "${DOCKER_AGENT_LABEL}" }
+      // run this stage on the same node as the pipeline (built-in node)
       steps {
         script {
           def fullImage = "${REGISTRY}/${IMAGE_NAME}:${TAG}"
+          // diagnostic info to help debug agent/docker availability
+          sh 'echo "Running on $(hostname); USER=$(whoami); PATH=$PATH"; which docker || true; docker --version || true; ls -l /var/run/docker.sock || true'
           // fail fast with a clear message if docker CLI/daemon are not available on the agent
           sh 'if ! command -v docker >/dev/null 2>&1; then echo "Docker CLI not found on agent"; exit 1; fi'
           sh "docker build -t ${fullImage} ."
@@ -61,14 +62,14 @@ pipeline {
     }
 
     stage('Push Image') {
-      // run push on docker-enabled node too
-      agent { label "${DOCKER_AGENT_LABEL}" }
+      // push image using the same node (built-in) — ensure this node has docker access
       when {
         expression { return env.DOCKER_REGISTRY_USER != null }
       }
       steps {
         withCredentials([usernamePassword(credentialsId: 'docker-registry-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-          // Check docker CLI availability
+          // diagnostic info and check docker CLI availability
+          sh 'echo "Running on $(hostname); USER=$(whoami); PATH=$PATH"; which docker || true; docker --version || true; ls -l /var/run/docker.sock || true'
           sh 'if ! command -v docker >/dev/null 2>&1; then echo "Docker CLI not found on agent"; exit 1; fi'
           // Use single-quoted Groovy strings concatenated with Groovy variables to avoid accidental GString expansion of shell $VARIABLES
           sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin ' + REGISTRY
